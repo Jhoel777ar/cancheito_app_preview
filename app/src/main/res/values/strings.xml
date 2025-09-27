@@ -92,8 +92,7 @@
     <string name="hint_pago_aprox">Pago aproximado (opcional)</string>
     <string name="perfil_titulo_post">Perfil del empleador</string>
 
-    <string name="limpiar">Limpiar</string>
-    <string name="sin_resultados">Sin resultados, intenta cambiar filtros</string>
+    <string name="hint_fecha_limite">Fecha límite*</string>
 
 
 </resources>
