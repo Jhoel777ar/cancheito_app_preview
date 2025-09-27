@@ -9,6 +9,9 @@ import androidx.fragment.app.Fragment
 import com.example.myappcancheito.R
 import com.example.myappcancheito.databinding.FragmentVerPostulacionesBinding
 import com.google.firebase.database.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class VerPostulacionesFragment : Fragment(R.layout.fragment_ver_postulaciones) {
 
@@ -17,6 +20,7 @@ class VerPostulacionesFragment : Fragment(R.layout.fragment_ver_postulaciones) {
 
     private val db by lazy { FirebaseDatabase.getInstance().reference }
     private var offerId: String? = null
+    private var postulacionesListener: ValueEventListener? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -33,7 +37,7 @@ class VerPostulacionesFragment : Fragment(R.layout.fragment_ver_postulaciones) {
 
     private fun cargarPostulaciones() {
         val ref = db.child("postulaciones").orderByChild("offerId").equalTo(offerId)
-        ref.addListenerForSingleValueEvent(object : ValueEventListener {
+        postulacionesListener = ref.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 binding.llPostulaciones.removeAllViews()
 
@@ -48,13 +52,36 @@ class VerPostulacionesFragment : Fragment(R.layout.fragment_ver_postulaciones) {
                 }
 
                 snapshot.children.mapNotNull { it.getValue(Postulacion::class.java) }
+                    .sortedByDescending { it.fechaPostulacion }
                     .forEach { postulacion ->
-                        val tvItem = TextView(requireContext()).apply {
-                            text = "Postulante: ${postulacion.postulanteId} \nFecha: ${postulacion.fechaPostulacion}"
-                            textSize = 14f
-                            setPadding(16, 16, 16, 16)
+                        val llItem = LinearLayout(requireContext()).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(0, 0, 0, 8)
                         }
-                        binding.llPostulaciones.addView(tvItem)
+
+                        val tvPostulante = TextView(requireContext()).apply {
+                            text = "Postulante: ${postulacion.postulanteId}"
+                            textSize = 14f
+                        }
+                        llItem.addView(tvPostulante)
+
+                        val tvFecha = TextView(requireContext()).apply {
+                            val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                            text = "Fecha: ${dateFormat.format(Date(postulacion.fechaPostulacion))}"
+                            textSize = 14f
+                        }
+                        llItem.addView(tvFecha)
+
+                        val separator = View(requireContext()).apply {
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                1
+                            ).apply { setMargins(0, 8, 0, 8) }
+                            setBackgroundColor(android.graphics.Color.GRAY)
+                        }
+                        llItem.addView(separator)
+
+                        binding.llPostulaciones.addView(llItem)
                     }
             }
 
@@ -65,7 +92,8 @@ class VerPostulacionesFragment : Fragment(R.layout.fragment_ver_postulaciones) {
     }
 
     override fun onDestroyView() {
-        super.onDestroyView()
+        postulacionesListener?.let { db.child("postulaciones").removeEventListener(it) }
         _binding = null
+        super.onDestroyView()
     }
 }
