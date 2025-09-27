@@ -9,5 +9,6 @@ data class Offer(
     var ubicacion: String = "",
     var estado: String = "ACTIVA",
     var pago_aprox: String = "",
+    var fecha_limite: Long? = null,
     var createdAt: Long = System.currentTimeMillis()
 )

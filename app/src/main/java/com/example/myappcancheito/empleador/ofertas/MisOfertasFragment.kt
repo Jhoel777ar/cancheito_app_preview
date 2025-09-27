@@ -94,6 +94,13 @@ class MisOfertasFragment : Fragment(R.layout.fragment_mis_ofertas) {
                     }
                     llItem.addView(tvPagoAprox)
 
+                    val tvFechaLimite = TextView(requireContext()).apply {
+                        text = "Fecha límite: ${offer.fecha_limite?.let { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it)) } ?: "No especificada"}"
+                        textSize = 14f
+                        setPadding(0, 0, 0, 8)
+                    }
+                    llItem.addView(tvFechaLimite)
+
                     val tvEstado = TextView(requireContext()).apply {
                         text = "Estado: ${offer.estado}"
                         textSize = 14f

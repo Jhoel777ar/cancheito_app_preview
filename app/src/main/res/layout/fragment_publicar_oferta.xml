@@ -100,6 +100,25 @@
                 android:contentDescription="@string/hint_pago_aprox" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/tilFechaLimite"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            app:startIconDrawable="@drawable/baseline_calendar_month_24"
+            app:startIconContentDescription="@string/hint_fecha_limite">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etFechaLimite"
+                android:hint="@string/hint_fecha_limite"
+                android:inputType="none"
+                android:focusable="false"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/hint_fecha_limite" />
+        </com.google.android.material.textfield.TextInputLayout>
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnPublicar"
             android:text="@string/btn_publicar"

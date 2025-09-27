@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="8dp"
+    android:elevation="4dp"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/tvCargo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Cargo"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:paddingBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvDescripcion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Descripción"
+            android:paddingBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvUbicacion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ubicación"
+            android:paddingBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvModalidad"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Modalidad"
+            android:paddingBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvPago"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Pago aprox"
+            android:paddingBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvFechaLimite"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Fecha límite"
+            android:paddingBottom="4dp" />
+        <Button
+            android:id="@+id/btnPostular"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Postular"
+            android:layout_marginTop="8dp"/>
+    </LinearLayout>
+</androidx.cardview.widget.CardView>
