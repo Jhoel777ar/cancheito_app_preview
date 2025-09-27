@@ -116,6 +116,22 @@ class MisOfertasFragment : Fragment(R.layout.fragment_mis_ofertas) {
                     }
                     llItem.addView(tvCreatedAt)
 
+                    val btnVerPostulaciones = android.widget.Button(requireContext()).apply {
+                        text = "Ver postulaciones"
+                        setOnClickListener {
+                            val fragment = VerPostulacionesFragment().apply {
+                                arguments = Bundle().apply {
+                                    putString("offerId", offer.id)
+                                }
+                            }
+                            parentFragmentManager.beginTransaction()
+                                .replace(R.id.navFragment, fragment) // 👈 asegúrate que navFragment es el container correcto
+                                .addToBackStack(null)
+                                .commit()
+                        }
+                    }
+                    llItem.addView(btnVerPostulaciones)
+
                     val separator = View(requireContext()).apply {
                         layoutParams = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
