@@ -62,4 +62,5 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
 
     implementation("io.coil-kt:coil:2.7.0")
+    implementation("com.github.bumptech.glide:glide:4.16.0")
 }
