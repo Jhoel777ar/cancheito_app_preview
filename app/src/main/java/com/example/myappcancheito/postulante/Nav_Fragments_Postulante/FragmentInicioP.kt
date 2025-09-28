@@ -4,198 +4,179 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
-import android.view.*
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
+import android.view.View
 import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
-import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.myappcancheito.R
 import com.example.myappcancheito.databinding.FragmentInicioPBinding
 import com.example.myappcancheito.empleador.ofertas.Offer
 import com.example.myappcancheito.postulante.aplicaciones.Postulacion
-import com.example.myappcancheito.postulante.ui.OffersUnifiedAdapter
-import com.example.myappcancheito.postulante.ui.OffersFilter
-import com.example.myappcancheito.postulante.ui.OffersViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
+import java.util.*
 
 class FragmentInicioP : Fragment(R.layout.fragment_inicio_p) {
 
-    // ---- Binding ÚNICO ----
-    private var _b: FragmentInicioPBinding? = null
-    private val b get() = _b!!
-
-    // ---- Firebase / VM ----
-    private val auth by lazy { FirebaseAuth.getInstance() }
+    private var _binding: FragmentInicioPBinding? = null
+    private val binding get() = _binding!!
     private val db by lazy { FirebaseDatabase.getInstance().reference }
-    private val vm: OffersViewModel by viewModels()
-
-    // ---- UI (spinners) ----
-    private lateinit var cargoAdapter: ArrayAdapter<String>
-    private lateinit var ciudadAdapter: ArrayAdapter<String>
-    private val cargos = mutableListOf("Todos")
-    private val ciudades = mutableListOf("Todas")
-    private var filtrosListos = false
-
-    // ---- Adapter Único ----
-    private lateinit var adapter: OffersUnifiedAdapter
-
-    // ---------------- LIFECYCLE ----------------
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
-        _b = FragmentInicioPBinding.inflate(inflater, container, false)
-        return b.root
-    }
+    private val auth by lazy { FirebaseAuth.getInstance() }
+    private var ofertasListener: ValueEventListener? = null
+    private var postulacionesListener: ValueEventListener? = null
+    private val ofertas = mutableListOf<Offer>()
+    private val appliedOffers = mutableSetOf<String>()
+    private lateinit var adapter: OfertaAdapter
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        _binding = FragmentInicioPBinding.bind(view)
 
-        // Adapter (postular + click en item)
-        adapter = OffersUnifiedAdapter(
-            onPostularClick = { offer -> intentarPostular(offer) },
-            onItemClick = { /* si quieres abrir detalle, hazlo aquí */ }
-        )
-
-        b.rvOffers.layoutManager = LinearLayoutManager(requireContext())
-        b.rvOffers.adapter = adapter
-
-        // Spinners
-        cargoAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, cargos)
-        ciudadAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, ciudades)
-        b.spCargo.adapter = cargoAdapter
-        b.spCiudad.adapter = ciudadAdapter
-
-        // Observers del VM (lista y vacío)
-        vm.items.observe(viewLifecycleOwner) { list ->
-            adapter.submitList(list)
-        }
-        vm.empty.observe(viewLifecycleOwner) { isEmpty ->
-            b.tvEmpty.visibility = if (isEmpty) View.VISIBLE else View.GONE
+        adapter = OfertaAdapter(ofertas, appliedOffers) { oferta ->
+            intentarPostular(oferta)
         }
 
-        // Cargar opciones de filtros y primera lista
+        binding.rvOfertas.layoutManager = LinearLayoutManager(requireContext())
+        binding.rvOfertas.adapter = adapter
+
+        checkNetworkAndLoadOfertas()
+    }
+
+    private fun checkNetworkAndLoadOfertas() {
         if (isNetworkAvailable()) {
-            b.groupError.isVisible = false
-            cargarFiltrosDesdeFirebase()
+            binding.tvError.isVisible = false
+            binding.rvOfertas.isVisible = true
+            cargarOfertas()
+            cargarPostulaciones()
         } else {
-            b.groupError.isVisible = true
-            b.tvError.text = "No hay conexión a internet"
-        }
-
-        // Acciones de filtros
-        fun aplicar() {
-            if (!filtrosListos) return
-            val cargo = b.spCargo.selectedItem?.toString()?.takeIf { it != "Todos" }
-            val ciudad = b.spCiudad.selectedItem?.toString()?.takeIf { it != "Todas" }
-            vm.applyFilters(OffersFilter(cargo, ciudad))
-        }
-
-        b.spCargo.onItemSelectedListener = simpleListener { aplicar() }
-        b.spCiudad.onItemSelectedListener = simpleListener { aplicar() }
-        b.btnLimpiar.setOnClickListener {
-            b.spCargo.setSelection(0)
-            b.spCiudad.setSelection(0)
-            if (filtrosListos) vm.clearFilters()
+            binding.tvError.text = "No hay conexión a internet"
+            binding.tvError.isVisible = true
+            binding.rvOfertas.isVisible = false
+            Toast.makeText(requireContext(), "No hay conexión a internet", Toast.LENGTH_LONG).show()
         }
     }
 
-    override fun onDestroyView() {
-        _b = null
-        super.onDestroyView()
-    }
-
-    // ---------------- HELPERS ----------------
     private fun isNetworkAvailable(): Boolean {
-        val cm = requireContext().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val network = cm.activeNetwork ?: return false
-        val caps = cm.getNetworkCapabilities(network) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        val connectivityManager = requireContext().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    /** Lee cargos y ciudades de /ofertas y repuebla Spinners; luego pide al VM la lista inicial (recientes). */
-    private fun cargarFiltrosDesdeFirebase() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                val snap = withContext(Dispatchers.IO) { db.child("ofertas").get().await() }
-                val offers = snap.children.mapNotNull { it.getValue(Offer::class.java) }
-
-                val cargosUnicos = offers.mapNotNull { it.cargo?.trim()?.takeIf { it.isNotEmpty() } }
-                    .toSet().toList().sorted()
-                val ciudadesUnicas = offers.mapNotNull { it.ubicacion?.trim()?.takeIf { it.isNotEmpty() } }
-                    .toSet().toList().sorted()
-
-                cargos.apply { clear(); add("Todos"); addAll(cargosUnicos) }
-                ciudades.apply { clear(); add("Todas"); addAll(ciudadesUnicas) }
-                cargoAdapter.notifyDataSetChanged()
-                ciudadAdapter.notifyDataSetChanged()
-
-                filtrosListos = true
-                vm.loadInitial() // mostrar recientes
-            } catch (e: Exception) {
-                filtrosListos = false
-                Toast.makeText(requireContext(), "Error cargando filtros: ${e.message}", Toast.LENGTH_SHORT).show()
-                vm.loadInitial()
+    private fun cargarOfertas() {
+        val ref = db.child("ofertas").orderByChild("estado").equalTo("ACTIVA")
+        ofertasListener = ref.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                ofertas.clear()
+                val nuevasOfertas = snapshot.children.mapNotNull { it.getValue(Offer::class.java) }
+                    .filter { it.estado == "ACTIVA" }
+                    .sortedByDescending { it.createdAt }
+                if (nuevasOfertas.isEmpty()) {
+                    binding.tvError.text = "No hay ofertas activas"
+                    binding.tvError.isVisible = true
+                    binding.rvOfertas.isVisible = false
+                } else {
+                    binding.tvError.isVisible = false
+                    binding.rvOfertas.isVisible = true
+                    ofertas.addAll(nuevasOfertas)
+                    adapter.notifyDataSetChanged()
+                }
             }
-        }
+
+            override fun onCancelled(error: DatabaseError) {
+                binding.tvError.text = "Error al cargar ofertas: ${error.message}"
+                binding.tvError.isVisible = true
+                binding.rvOfertas.isVisible = false
+                Toast.makeText(requireContext(), "Error al cargar ofertas: ${error.message}", Toast.LENGTH_LONG).show()
+            }
+        })
     }
 
-    private fun simpleListener(block: () -> Unit) = object : AdapterView.OnItemSelectedListener {
-        override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = block()
-        override fun onNothingSelected(parent: AdapterView<*>?) {}
+    private fun cargarPostulaciones() {
+        val uid = auth.currentUser?.uid ?: return
+        val ref = db.child("postulaciones").orderByChild("postulanteId").equalTo(uid)
+        postulacionesListener = ref.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                appliedOffers.clear()
+                snapshot.children.forEach { post ->
+                    val postulacion = post.getValue(Postulacion::class.java)
+                    postulacion?.offerId?.let { appliedOffers.add(it) }
+                }
+                adapter.notifyDataSetChanged()
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Toast.makeText(requireContext(), "Error al cargar postulaciones: ${error.message}", Toast.LENGTH_LONG).show()
+            }
+        })
     }
 
-    // ---------------- POSTULAR ----------------
     private fun intentarPostular(oferta: Offer) {
         val uid = auth.currentUser?.uid ?: run {
             Toast.makeText(requireContext(), "Inicia sesión para postular", Toast.LENGTH_SHORT).show()
             return
         }
         val ahora = System.currentTimeMillis()
-        oferta.fecha_limite?.let { if (ahora > it) {
-            Toast.makeText(requireContext(), "La oferta ya venció", Toast.LENGTH_SHORT).show()
-            return
-        } }
+
+        oferta.fecha_limite?.let {
+            if (ahora > it) {
+                Toast.makeText(requireContext(), "La oferta ya venció", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
 
         android.app.AlertDialog.Builder(requireContext())
             .setTitle("Postular")
             .setMessage("¿Deseas postular a esta oferta?")
-            .setPositiveButton("Sí") { _, _ -> verificarPostulacionExistente(oferta, uid) }
+            .setPositiveButton("Sí") { _, _ ->
+                verificarPostulacionExistente(oferta, uid)
+            }
             .setNegativeButton("No", null)
             .show()
     }
 
     private fun verificarPostulacionExistente(oferta: Offer, uid: String) {
-        val clave = "${oferta.id}_$uid"
-        val ref = db.child("postulaciones").child(clave)
-        ref.get().addOnSuccessListener { snap ->
-            if (snap.exists()) {
-                Toast.makeText(requireContext(), "Ya postulaste a esta oferta", Toast.LENGTH_SHORT).show()
-            } else {
-                guardarPostulacion(oferta, uid)
+        val ref = db.child("postulaciones").orderByChild("offerId_postulanteId").equalTo("${oferta.id}_$uid")
+        ref.addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (snapshot.exists()) {
+                    Toast.makeText(requireContext(), "Ya postulaste a esta oferta", Toast.LENGTH_SHORT).show()
+                } else {
+                    guardarPostulacion(oferta, uid)
+                }
             }
-        }.addOnFailureListener {
-            Toast.makeText(requireContext(), "Error al verificar: ${it.message}", Toast.LENGTH_LONG).show()
-        }
+
+            override fun onCancelled(error: DatabaseError) {
+                Toast.makeText(requireContext(), "Error al verificar postulaciones: ${error.message}", Toast.LENGTH_LONG).show()
+            }
+        })
     }
 
     private fun guardarPostulacion(oferta: Offer, uid: String) {
-        val clave = "${oferta.id}_$uid"
-        val p = Postulacion(
-            id = clave,
+        val id = UUID.randomUUID().toString()
+        val postulacion = Postulacion(
+            id = id,
             offerId = oferta.id,
             postulanteId = uid,
-            offerId_postulanteId = clave,
-            fechaPostulacion = System.currentTimeMillis()
+            offerId_postulanteId = "${oferta.id}_$uid",
+            fechaPostulacion = System.currentTimeMillis(),
+            estado_postulacion = "pendiente"
         )
-        db.child("postulaciones").child(clave).setValue(p)
-            .addOnSuccessListener { Toast.makeText(requireContext(), "Postulación enviada", Toast.LENGTH_SHORT).show() }
-            .addOnFailureListener { Toast.makeText(requireContext(), "Error al postular: ${it.message}", Toast.LENGTH_LONG).show() }
+
+        db.child("postulaciones").child(id).setValue(postulacion)
+            .addOnSuccessListener {
+                Toast.makeText(requireContext(), "Postulación enviada con éxito", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener {
+                Toast.makeText(requireContext(), "Error al postular: ${it.message}", Toast.LENGTH_LONG).show()
+            }
+    }
+
+    override fun onDestroyView() {
+        ofertasListener?.let { db.child("ofertas").removeEventListener(it) }
+        postulacionesListener?.let { db.child("postulaciones").removeEventListener(it) }
+        _binding = null
+        super.onDestroyView()
     }
 }
