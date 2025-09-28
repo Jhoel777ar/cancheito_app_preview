@@ -74,14 +74,47 @@
             android:id="@+id/btnDescargarCv"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Descargar CV" />
+            android:text="Descargar CV"
+            android:layout_marginTop="12dp"/>
 
         <!-- Opcional: botón para ver el CV -->
         <Button
             android:id="@+id/btnVerCv"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Ver CV en línea" />
+            android:text="Ver CV en línea"
+            android:layout_marginTop="8dp" />
+
+        <!-- NUEVOS BOTONES -->
+        <LinearLayout
+            android:id="@+id/llAccionesEntrevista"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end"
+            android:layout_marginTop="16dp">
+
+            <Button
+                android:id="@+id/btnAceptarEntrevista"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Aceptar entrevista"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                android:backgroundTint="#32CD32"
+                android:layout_marginEnd="8dp"/>
+
+            <Button
+                android:id="@+id/btnRechazarEntrevista"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Rechazar entrevista"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                android:backgroundTint="#D32F2F"/>
+        </LinearLayout>
 
     </LinearLayout>
 </ScrollView>

@@ -21,15 +21,22 @@ class DetallePostulanteFragment : Fragment(R.layout.fragment_detalle_postulante)
 
     companion object {
         private const val ARG_UID = "uid"
+        private const val ARG_OFFER_ID = "offerId"
         private const val USERS_NODE = "Usuarios"
+        private const val POSTULACIONES_NODE = "postulaciones"
 
-        fun newInstance(uid: String) = DetallePostulanteFragment().apply {
-            arguments = Bundle().apply { putString(ARG_UID, uid) }
+        fun newInstance(uid: String, offerId: String) = DetallePostulanteFragment().apply {
+            arguments = Bundle().apply {
+                putString(ARG_UID, uid)
+                putString(ARG_OFFER_ID, offerId)
+            }
         }
     }
 
     private var _binding: FragmentDetallePostulanteBinding? = null
     private val binding get() = _binding!!
+    private var offerId: String? = null
+
 
     private val db by lazy { FirebaseDatabase.getInstance().reference }
     private var uid: String? = null
@@ -51,16 +58,83 @@ class DetallePostulanteFragment : Fragment(R.layout.fragment_detalle_postulante)
         _binding = FragmentDetallePostulanteBinding.bind(view)
 
         uid = arguments?.getString(ARG_UID)
+        offerId = arguments?.getString(ARG_OFFER_ID)
+
         if (uid.isNullOrEmpty()) {
             Toast.makeText(requireContext(), "UID inválido", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (offerId.isNullOrEmpty()) {
+            Toast.makeText(requireContext(), "offerId inválido", Toast.LENGTH_SHORT).show()
             return
         }
 
         binding.btnDescargarCv.isEnabled = false
         binding.btnVerCv.isEnabled = false
 
+        // Listeners para aceptar / rechazar
+        binding.btnAceptarEntrevista.setOnClickListener {
+            actualizarEstadoPostulacion("aceptado")
+        }
+        binding.btnRechazarEntrevista.setOnClickListener {
+            actualizarEstadoPostulacion("rechazado")
+        }
+
         cargarUsuario(uid!!)
     }
+
+    private fun actualizarEstadoPostulacion(nuevoEstado: String) {
+        val offer = offerId
+        val postulante = uid
+        if (offer.isNullOrEmpty() || postulante.isNullOrEmpty()) {
+            Toast.makeText(requireContext(), "Faltan datos para actualizar.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Deshabilitar botones mientras actualiza (opcional)
+        setBotonesAccionEnabled(false)
+
+        val clave = "${offer}_${postulante}"
+        db.child(POSTULACIONES_NODE)
+            .orderByChild("offerId_postulanteId")
+            .equalTo(clave)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    if (!snapshot.hasChildren()) {
+                        setBotonesAccionEnabled(true)
+                        Toast.makeText(requireContext(), "No se encontró la postulación.", Toast.LENGTH_SHORT).show()
+                        return
+                    }
+
+                    // Puede haber 1 resultado: actualiza su hijo "estado_postulacion"
+                    var ok = false
+                    snapshot.children.forEach { child ->
+                        child.ref.child("estado_postulacion").setValue(nuevoEstado)
+                            .addOnSuccessListener {
+                                ok = true
+                                setBotonesAccionEnabled(true)
+                                Toast.makeText(requireContext(), "Estado actualizado a \"$nuevoEstado\".", Toast.LENGTH_SHORT).show()
+                            }
+                            .addOnFailureListener { e ->
+                                setBotonesAccionEnabled(true)
+                                Toast.makeText(requireContext(), "Error al actualizar: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                    }
+                    if (!ok) setBotonesAccionEnabled(true)
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    setBotonesAccionEnabled(true)
+                    Toast.makeText(requireContext(), "Error: ${error.message}", Toast.LENGTH_LONG).show()
+                }
+            })
+    }
+
+    private fun setBotonesAccionEnabled(enabled: Boolean) {
+        binding.btnAceptarEntrevista.isEnabled = enabled
+        binding.btnRechazarEntrevista.isEnabled = enabled
+    }
+
 
     private fun cargarUsuario(uid: String) {
         db.child(USERS_NODE).child(uid)

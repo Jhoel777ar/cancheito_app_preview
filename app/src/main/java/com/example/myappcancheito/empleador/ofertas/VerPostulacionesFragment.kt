@@ -172,10 +172,11 @@ class VerPostulacionesFragment : Fragment(R.layout.fragment_ver_postulaciones) {
     }
 
     private fun abrirDetallePostulante(uid: String) {
+        val currentOfferId = offerId ?: return // o muestra un Toast si quieres
         parentFragmentManager.beginTransaction()
             .replace(
                 R.id.navFragment,
-                DetallePostulanteFragment.newInstance(uid)
+                DetallePostulanteFragment.newInstance(uid, currentOfferId)
             )
             .addToBackStack(null)
             .commit()
