@@ -5,7 +5,6 @@ data class Postulacion(
     var offerId: String = "",
     var postulanteId: String = "",
     var offerId_postulanteId: String = "",
-    var estado: String = "pendiente",   // ← usa 'estado'
-    var fechaPostulacion: Long = 0L
+    var fechaPostulacion: Long = 0,
+    var estado_postulacion: String = "pendiente"
 )
-
