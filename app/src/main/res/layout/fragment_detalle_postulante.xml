@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <ImageView
+            android:id="@+id/ivFoto"
+            android:layout_width="140dp"
+            android:layout_height="140dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="16dp"
+            android:scaleType="centerCrop" />
+
+        <TextView
+            android:id="@+id/tvNombre"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:text="Nombre" />
+
+        <TextView
+            android:id="@+id/tvEmail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Email"
+            android:layout_marginTop="4dp"/>
+
+        <TextView
+            android:id="@+id/tvUbicacion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Ubicación"
+            android:layout_marginTop="4dp"/>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#22000000"
+            android:layout_marginVertical="12dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textStyle="bold"
+            android:text="Formación" />
+
+        <TextView
+            android:id="@+id/tvFormacion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="-" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp"
+            android:text="Experiencia" />
+
+        <TextView
+            android:id="@+id/tvExperiencia"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="-" />
+
+        <Button
+            android:id="@+id/btnDescargarCv"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Descargar CV"
+            android:layout_marginTop="12dp"/>
+
+        <!-- Opcional: botón para ver el CV -->
+        <Button
+            android:id="@+id/btnVerCv"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Ver CV en línea"
+            android:layout_marginTop="8dp" />
+
+        <!-- NUEVOS BOTONES -->
+        <LinearLayout
+            android:id="@+id/llAccionesEntrevista"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end"
+            android:layout_marginTop="16dp">
+
+            <Button
+                android:id="@+id/btnAceptarEntrevista"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Aceptar entrevista"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                android:backgroundTint="#32CD32"
+                android:layout_marginEnd="8dp"/>
+
+            <Button
+                android:id="@+id/btnRechazarEntrevista"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Rechazar entrevista"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                android:backgroundTint="#D32F2F"/>
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>
