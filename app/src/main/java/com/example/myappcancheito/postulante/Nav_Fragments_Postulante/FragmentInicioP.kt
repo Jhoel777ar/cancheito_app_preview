@@ -23,15 +23,17 @@ class FragmentInicioP : Fragment(R.layout.fragment_inicio_p) {
     private val binding get() = _binding!!
     private val db by lazy { FirebaseDatabase.getInstance().reference }
     private val auth by lazy { FirebaseAuth.getInstance() }
-    private var listener: ValueEventListener? = null
+    private var ofertasListener: ValueEventListener? = null
+    private var postulacionesListener: ValueEventListener? = null
     private val ofertas = mutableListOf<Offer>()
+    private val appliedOffers = mutableSetOf<String>()
     private lateinit var adapter: OfertaAdapter
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentInicioPBinding.bind(view)
 
-        adapter = OfertaAdapter(ofertas) { oferta ->
+        adapter = OfertaAdapter(ofertas, appliedOffers) { oferta ->
             intentarPostular(oferta)
         }
 
@@ -46,6 +48,7 @@ class FragmentInicioP : Fragment(R.layout.fragment_inicio_p) {
             binding.tvError.isVisible = false
             binding.rvOfertas.isVisible = true
             cargarOfertas()
+            cargarPostulaciones()
         } else {
             binding.tvError.text = "No hay conexión a internet"
             binding.tvError.isVisible = true
@@ -63,7 +66,7 @@ class FragmentInicioP : Fragment(R.layout.fragment_inicio_p) {
 
     private fun cargarOfertas() {
         val ref = db.child("ofertas").orderByChild("estado").equalTo("ACTIVA")
-        listener = ref.addValueEventListener(object : ValueEventListener {
+        ofertasListener = ref.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 ofertas.clear()
                 val nuevasOfertas = snapshot.children.mapNotNull { it.getValue(Offer::class.java) }
@@ -86,6 +89,25 @@ class FragmentInicioP : Fragment(R.layout.fragment_inicio_p) {
                 binding.tvError.isVisible = true
                 binding.rvOfertas.isVisible = false
                 Toast.makeText(requireContext(), "Error al cargar ofertas: ${error.message}", Toast.LENGTH_LONG).show()
+            }
+        })
+    }
+
+    private fun cargarPostulaciones() {
+        val uid = auth.currentUser?.uid ?: return
+        val ref = db.child("postulaciones").orderByChild("postulanteId").equalTo(uid)
+        postulacionesListener = ref.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                appliedOffers.clear()
+                snapshot.children.forEach { post ->
+                    val postulacion = post.getValue(Postulacion::class.java)
+                    postulacion?.offerId?.let { appliedOffers.add(it) }
+                }
+                adapter.notifyDataSetChanged()
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Toast.makeText(requireContext(), "Error al cargar postulaciones: ${error.message}", Toast.LENGTH_LONG).show()
             }
         })
     }
@@ -115,9 +137,7 @@ class FragmentInicioP : Fragment(R.layout.fragment_inicio_p) {
     }
 
     private fun verificarPostulacionExistente(oferta: Offer, uid: String) {
-        val clave = "${oferta.id}_$uid"
-        val ref = db.child("postulaciones").child(clave)
-
+        val ref = db.child("postulaciones").orderByChild("offerId_postulanteId").equalTo("${oferta.id}_$uid")
         ref.addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 if (snapshot.exists()) {
@@ -134,17 +154,17 @@ class FragmentInicioP : Fragment(R.layout.fragment_inicio_p) {
     }
 
     private fun guardarPostulacion(oferta: Offer, uid: String) {
-        val clave = "${oferta.id}_$uid"
-
+        val id = UUID.randomUUID().toString()
         val postulacion = Postulacion(
-            id = clave,
+            id = id,
             offerId = oferta.id,
             postulanteId = uid,
-            offerId_postulanteId = clave,
-            fechaPostulacion = System.currentTimeMillis()
+            offerId_postulanteId = "${oferta.id}_$uid",
+            fechaPostulacion = System.currentTimeMillis(),
+            estado_postulacion = "pendiente"
         )
 
-        db.child("postulaciones").child(clave).setValue(postulacion)
+        db.child("postulaciones").child(id).setValue(postulacion)
             .addOnSuccessListener {
                 Toast.makeText(requireContext(), "Postulación enviada con éxito", Toast.LENGTH_SHORT).show()
             }
@@ -154,7 +174,8 @@ class FragmentInicioP : Fragment(R.layout.fragment_inicio_p) {
     }
 
     override fun onDestroyView() {
-        listener?.let { db.child("ofertas").removeEventListener(it) }
+        ofertasListener?.let { db.child("ofertas").removeEventListener(it) }
+        postulacionesListener?.let { db.child("postulaciones").removeEventListener(it) }
         _binding = null
         super.onDestroyView()
     }

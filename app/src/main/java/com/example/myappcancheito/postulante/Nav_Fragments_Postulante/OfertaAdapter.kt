@@ -11,6 +11,7 @@ import java.util.TimeZone
 
 class OfertaAdapter(
     private val ofertas: List<Offer>,
+    private val appliedOffers: Set<String>,
     private val onPostularClick: (Offer) -> Unit
 ) : RecyclerView.Adapter<OfertaAdapter.OfertaViewHolder>() {
 
@@ -38,8 +39,15 @@ class OfertaAdapter(
                 dateFormat.format(it)
             } ?: "No especificada"
 
-            btnPostular.setOnClickListener {
-                onPostularClick(oferta)
+            if (appliedOffers.contains(oferta.id)) {
+                btnPostular.text = "Ya postulaste"
+                btnPostular.isEnabled = false
+            } else {
+                btnPostular.text = "Postular"
+                btnPostular.isEnabled = true
+                btnPostular.setOnClickListener {
+                    onPostularClick(oferta)
+                }
             }
         }
     }
