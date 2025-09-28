@@ -15,6 +15,11 @@
             android:icon="@drawable/outline_account_circle_24"
             android:title="@string/menu_Perfil_postulante"
             />
+
+        <item
+            android:id="@+id/op_postulaciones_c"
+            android:title="@string/postulaciones"
+            android:icon="@drawable/person_24px" />
     </group>
     <item
         android:id="@+id/op_cerrar_sesion_c"

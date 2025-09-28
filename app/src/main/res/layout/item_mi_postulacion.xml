@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:padding="12dp"
+    android:orientation="vertical"
+    android:background="@android:color/white"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <!-- Cargo (desde Offer) -->
+    <TextView
+        android:id="@+id/tvCargo"
+        android:textStyle="bold"
+        android:textSize="16sp"
+        android:text="Cargo"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <!-- Estado (desde Postulacion.estado_postulacion) -->
+    <TextView
+        android:id="@+id/tvEstado"
+        android:text="Estado"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <!-- Fecha opcional -->
+    <TextView
+        android:id="@+id/tvFecha"
+        android:text=""
+        android:textSize="12sp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+</LinearLayout>
