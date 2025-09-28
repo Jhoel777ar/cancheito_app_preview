@@ -16,34 +16,46 @@ class OffersUnifiedAdapter(
     private val onItemClick: (Offer) -> Unit = {}
 ) : ListAdapter<Offer, OffersUnifiedAdapter.VH>(DIFF) {
 
+    // --- NUEVO: set de ofertas ya aplicadas ---
+    private var appliedOffers: Set<String> = emptySet()
+    fun updateAppliedOffers(newSet: Set<String>) {
+        appliedOffers = newSet
+        notifyDataSetChanged() // refresca estado del botón
+    }
+
     object DIFF : DiffUtil.ItemCallback<Offer>() {
         override fun areItemsTheSame(o: Offer, n: Offer) = o.id == n.id
         override fun areContentsTheSame(o: Offer, n: Offer) = o == n
     }
 
-    inner class VH(val b: ItemOfertaBinding) : RecyclerView.ViewHolder(b.root) {
-        fun bind(it: Offer) = with(b) {
-            tvCargo.text = it.cargo
-            tvDescripcion.text = it.descripcion
-            tvUbicacion.text = it.ubicacion
-            tvModalidad.text = it.modalidad
-            tvPago.text = it.pago_aprox
-            tvFechaLimite.text = it.fecha_limite?.let { ms ->
+    inner class VH(private val b: ItemOfertaBinding) : RecyclerView.ViewHolder(b.root) {
+        fun bind(of: Offer) = with(b) {
+            tvCargo.text = of.cargo
+            tvDescripcion.text = of.descripcion
+            tvUbicacion.text = of.ubicacion
+            tvModalidad.text = of.modalidad
+            tvPago.text = of.pago_aprox
+            tvFechaLimite.text = of.fecha_limite?.let { ms ->
                 SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply {
                     timeZone = TimeZone.getDefault()
                 }.format(ms)
             } ?: "No especificada"
 
-            // Click en toda la tarjeta (opcional, por si quieres abrir detalle)
-            root.setOnClickListener { _ -> onItemClick(it) }
+            root.setOnClickListener { onItemClick(of) }
 
-            // Botón Postular
-            btnPostular.setOnClickListener { _ -> onPostularClick(it) }
+            // --- NUEVO: estado del botón según appliedOffers ---
+            val yaPostulado = appliedOffers.contains(of.id)
+            btnPostular.isEnabled = !yaPostulado
+            btnPostular.text = if (yaPostulado) "Ya postulaste" else "Postular"
+            btnPostular.setOnClickListener {
+                if (!yaPostulado) onPostularClick(of)
+            }
         }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
         VH(ItemOfertaBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
-    override fun onBindViewHolder(holder: VH, position: Int) = holder.bind(getItem(position))
+    override fun onBindViewHolder(holder: VH, position: Int) =
+        holder.bind(getItem(position))
 }

@@ -98,5 +98,7 @@
     <string name="limpiar">Limpiar</string>
     <string name="sin_resultados">Sin resultados, intenta cambiar filtros</string>
 
+    <string name="buscar_ofertas">Buscar ofertas</string>
+
 
 </resources>
