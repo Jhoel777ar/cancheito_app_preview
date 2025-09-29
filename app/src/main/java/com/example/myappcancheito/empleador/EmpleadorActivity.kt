@@ -18,6 +18,7 @@ import com.example.myappcancheito.databinding.ActivityEmpleadorBinding
 import com.example.myappcancheito.empleador.Nav_fragment_Empleador.EmpleadorProfile
 import com.example.myappcancheito.empleador.Nav_fragment_Empleador.FragmentInicioV
 import com.example.myappcancheito.empleador.Nav_fragment_Empleador.FragmentPerfilEm
+import com.example.myappcancheito.empleador.Nav_fragment_Empleador.MisPostulacionesFragment
 import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
@@ -160,6 +161,7 @@ class EmpleadorActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     override fun onNavigationItemSelected(item: android.view.MenuItem): Boolean {
         when (item.itemId) {
             R.id.op_inicio_v -> replaceFragment(FragmentInicioV())
+            R.id.op_postulaciones_v -> replaceFragment(MisPostulacionesFragment())
             R.id.op_publicar_oferta -> replaceFragment(
                 com.example.myappcancheito.empleador.ofertas.PublicarOfertaFragment()
             )
