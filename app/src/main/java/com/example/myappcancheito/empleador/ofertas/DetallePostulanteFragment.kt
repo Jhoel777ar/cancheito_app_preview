@@ -1,5 +1,6 @@
 package com.example.myappcancheito.empleador.ofertas
 
+import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
@@ -65,21 +66,16 @@ class DetallePostulanteFragment : Fragment(R.layout.fragment_detalle_postulante)
 
         binding.btnDescargarCv.isEnabled = false
         binding.btnVerCv.isEnabled = false
+        binding.btnAceptarEntrevista.isEnabled = false
+        binding.btnRechazarEntrevista.isEnabled = false
 
-        binding.btnAceptarEntrevista.setOnClickListener {
-            actualizarEstadoPostulacion("aceptado")
-        }
-        binding.btnRechazarEntrevista.setOnClickListener {
-            actualizarEstadoPostulacion("rechazado")
-        }
-
-        cargarUsuario(uid!!)
+        cargarUsuarioYEstado(uid!!)
     }
 
-    private fun cargarUsuario(uid: String) {
+    private fun cargarUsuarioYEstado(uid: String) {
         db.child(USERS_NODE).child(uid).addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                if (_binding == null) return // Evita NPE si la vista ya se destruyó
+                if (_binding == null) return
                 val u = snapshot.getValue(VerPostulacionesFragment.Usuarios::class.java)
                 if (u == null) {
                     Toast.makeText(requireContext(), "Usuario no encontrado", Toast.LENGTH_SHORT).show()
@@ -117,6 +113,36 @@ class DetallePostulanteFragment : Fragment(R.layout.fragment_detalle_postulante)
                     binding.btnDescargarCv.isEnabled = false
                     binding.btnVerCv.isEnabled = false
                 }
+
+                val clave = "${offerId}_${uid}"
+                db.child(POSTULACIONES_NODE)
+                    .orderByChild("offerId_postulanteId")
+                    .equalTo(clave)
+                    .addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(snapshot: DataSnapshot) {
+                            if (_binding == null) return
+                            val estado = snapshot.children.firstOrNull()
+                                ?.child("estado_postulacion")?.getValue(String::class.java)
+                            if (estado == "aceptado" || estado == "rechazado") {
+                                binding.btnAceptarEntrevista.isEnabled = false
+                                binding.btnRechazarEntrevista.isEnabled = false
+                            } else {
+                                binding.btnAceptarEntrevista.isEnabled = true
+                                binding.btnRechazarEntrevista.isEnabled = true
+                                binding.btnAceptarEntrevista.setOnClickListener {
+                                    mostrarDialogoConfirmacion("aceptado")
+                                }
+                                binding.btnRechazarEntrevista.setOnClickListener {
+                                    mostrarDialogoConfirmacion("rechazado")
+                                }
+                            }
+                        }
+
+                        override fun onCancelled(error: DatabaseError) {
+                            if (_binding == null) return
+                            Toast.makeText(requireContext(), "Error al cargar estado: ${error.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    })
             }
 
             override fun onCancelled(error: DatabaseError) {
@@ -125,6 +151,19 @@ class DetallePostulanteFragment : Fragment(R.layout.fragment_detalle_postulante)
                 parentFragmentManager.popBackStack()
             }
         })
+    }
+
+    private fun mostrarDialogoConfirmacion(nuevoEstado: String) {
+        if (_binding == null) return
+        AlertDialog.Builder(requireContext())
+            .setTitle("Confirmar acción")
+            .setMessage("¿Estás seguro de que deseas ${if (nuevoEstado == "aceptado") "aceptar" else "rechazar"} esta postulación?")
+            .setPositiveButton("Sí") { _, _ ->
+                actualizarEstadoPostulacion(nuevoEstado)
+            }
+            .setNegativeButton("No", null)
+            .setCancelable(true)
+            .show()
     }
 
     private fun actualizarEstadoPostulacion(nuevoEstado: String) {
@@ -143,10 +182,15 @@ class DetallePostulanteFragment : Fragment(R.layout.fragment_detalle_postulante)
                         return
                     }
                     snapshot.children.forEach { child ->
+                        val estadoActual = child.child("estado_postulacion").getValue(String::class.java)
+                        if (estadoActual == nuevoEstado) {
+                            setBotonesAccionEnabled(false)
+                            return@forEach
+                        }
                         child.ref.child("estado_postulacion").setValue(nuevoEstado)
                             .addOnSuccessListener {
                                 if (_binding == null) return@addOnSuccessListener
-                                setBotonesAccionEnabled(true)
+                                setBotonesAccionEnabled(false)
                                 Toast.makeText(requireContext(), "Estado actualizado a $nuevoEstado", Toast.LENGTH_SHORT).show()
                             }
                             .addOnFailureListener { e ->
