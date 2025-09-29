@@ -35,21 +35,18 @@ class DetallePostulanteFragment : Fragment(R.layout.fragment_detalle_postulante)
 
     private var _binding: FragmentDetallePostulanteBinding? = null
     private val binding get() = _binding!!
-    private var offerId: String? = null
-
-
     private val db by lazy { FirebaseDatabase.getInstance().reference }
     private var uid: String? = null
+    private var offerId: String? = null
     private var currentCvUrl: String? = null
 
-    // Permiso de escritura (solo necesario en API <= 28 si quieres guardar en /Download público)
     private val requestStoragePermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted && currentCvUrl != null) {
             iniciarDescargaCv(currentCvUrl!!)
         } else if (!granted) {
-            Toast.makeText(requireContext(),"Permiso denegado", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Permiso denegado", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -60,19 +57,15 @@ class DetallePostulanteFragment : Fragment(R.layout.fragment_detalle_postulante)
         uid = arguments?.getString(ARG_UID)
         offerId = arguments?.getString(ARG_OFFER_ID)
 
-        if (uid.isNullOrEmpty()) {
-            Toast.makeText(requireContext(), "UID inválido", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (offerId.isNullOrEmpty()) {
-            Toast.makeText(requireContext(), "offerId inválido", Toast.LENGTH_SHORT).show()
+        if (uid.isNullOrEmpty() || offerId.isNullOrEmpty()) {
+            Toast.makeText(requireContext(), "Datos inválidos", Toast.LENGTH_SHORT).show()
+            parentFragmentManager.popBackStack()
             return
         }
 
         binding.btnDescargarCv.isEnabled = false
         binding.btnVerCv.isEnabled = false
 
-        // Listeners para aceptar / rechazar
         binding.btnAceptarEntrevista.setOnClickListener {
             actualizarEstadoPostulacion("aceptado")
         }
@@ -83,161 +76,145 @@ class DetallePostulanteFragment : Fragment(R.layout.fragment_detalle_postulante)
         cargarUsuario(uid!!)
     }
 
+    private fun cargarUsuario(uid: String) {
+        db.child(USERS_NODE).child(uid).addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (_binding == null) return // Evita NPE si la vista ya se destruyó
+                val u = snapshot.getValue(VerPostulacionesFragment.Usuarios::class.java)
+                if (u == null) {
+                    Toast.makeText(requireContext(), "Usuario no encontrado", Toast.LENGTH_SHORT).show()
+                    parentFragmentManager.popBackStack()
+                    return
+                }
+
+                Glide.with(requireContext())
+                    .load(u.fotoPerfilUrl)
+                    .placeholder(R.drawable.person_24px)
+                    .error(R.drawable.person_24px)
+                    .into(binding.ivFoto)
+
+                binding.tvNombre.text = u.nombre_completo ?: "(sin nombre)"
+                binding.tvEmail.text = u.email ?: "-"
+                binding.tvUbicacion.text = u.ubicacion ?: "-"
+                binding.tvFormacion.text = u.formacion ?: "-"
+                binding.tvExperiencia.text = u.experiencia ?: "-"
+
+                currentCvUrl = u.cvUrl
+                if (!currentCvUrl.isNullOrBlank()) {
+                    binding.btnDescargarCv.isEnabled = true
+                    binding.btnVerCv.isEnabled = true
+                    binding.btnDescargarCv.setOnClickListener {
+                        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                            requestStoragePermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        } else {
+                            iniciarDescargaCv(currentCvUrl!!)
+                        }
+                    }
+                    binding.btnVerCv.setOnClickListener {
+                        abrirCvEnVisor(currentCvUrl!!)
+                    }
+                } else {
+                    binding.btnDescargarCv.isEnabled = false
+                    binding.btnVerCv.isEnabled = false
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                if (_binding == null) return
+                Toast.makeText(requireContext(), "Error: ${error.message}", Toast.LENGTH_SHORT).show()
+                parentFragmentManager.popBackStack()
+            }
+        })
+    }
+
     private fun actualizarEstadoPostulacion(nuevoEstado: String) {
-        val offer = offerId
-        val postulante = uid
-        if (offer.isNullOrEmpty() || postulante.isNullOrEmpty()) {
-            Toast.makeText(requireContext(), "Faltan datos para actualizar.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // Deshabilitar botones mientras actualiza (opcional)
+        if (_binding == null) return
+        val clave = "${offerId}_${uid}"
         setBotonesAccionEnabled(false)
-
-        val clave = "${offer}_${postulante}"
         db.child(POSTULACIONES_NODE)
             .orderByChild("offerId_postulanteId")
             .equalTo(clave)
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
+                    if (_binding == null) return
                     if (!snapshot.hasChildren()) {
                         setBotonesAccionEnabled(true)
-                        Toast.makeText(requireContext(), "No se encontró la postulación.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), "Postulación no encontrada", Toast.LENGTH_SHORT).show()
                         return
                     }
-
-                    // Puede haber 1 resultado: actualiza su hijo "estado_postulacion"
-                    var ok = false
                     snapshot.children.forEach { child ->
                         child.ref.child("estado_postulacion").setValue(nuevoEstado)
                             .addOnSuccessListener {
-                                ok = true
+                                if (_binding == null) return@addOnSuccessListener
                                 setBotonesAccionEnabled(true)
-                                Toast.makeText(requireContext(), "Estado actualizado a \"$nuevoEstado\".", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(requireContext(), "Estado actualizado a $nuevoEstado", Toast.LENGTH_SHORT).show()
                             }
                             .addOnFailureListener { e ->
+                                if (_binding == null) return@addOnFailureListener
                                 setBotonesAccionEnabled(true)
-                                Toast.makeText(requireContext(), "Error al actualizar: ${e.message}", Toast.LENGTH_LONG).show()
+                                Toast.makeText(requireContext(), "Error al actualizar: ${e.message}", Toast.LENGTH_SHORT).show()
                             }
                     }
-                    if (!ok) setBotonesAccionEnabled(true)
                 }
 
                 override fun onCancelled(error: DatabaseError) {
+                    if (_binding == null) return
                     setBotonesAccionEnabled(true)
-                    Toast.makeText(requireContext(), "Error: ${error.message}", Toast.LENGTH_LONG).show()
-                }
-            })
-    }
-
-    private fun setBotonesAccionEnabled(enabled: Boolean) {
-        binding.btnAceptarEntrevista.isEnabled = enabled
-        binding.btnRechazarEntrevista.isEnabled = enabled
-    }
-
-
-    private fun cargarUsuario(uid: String) {
-        db.child(USERS_NODE).child(uid)
-            .addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    val u = snapshot.getValue(VerPostulacionesFragment.Usuarios::class.java)
-                    if (u == null) {
-                        Toast.makeText(requireContext(), "Usuario no encontrado", Toast.LENGTH_SHORT).show()
-                        return
-                    }
-
-                    // Foto
-                    Glide.with(requireContext())
-                        .load(u.fotoPerfilUrl)
-                        .placeholder(R.drawable.person_24px)
-                        .error(R.drawable.person_24px)
-                        .into(binding.ivFoto)
-
-                    // Datos
-                    binding.tvNombre.text        = u.nombre_completo ?: "(sin nombre)"
-                    binding.tvEmail.text         = u.email ?: "-"
-                    binding.tvUbicacion.text     = u.ubicacion ?: "-"
-                    binding.tvFormacion.text     = u.formacion ?: "-"
-                    binding.tvExperiencia.text   = u.experiencia ?: "-"
-
-                    currentCvUrl = u.cvUrl
-
-                    if (!currentCvUrl.isNullOrBlank()) {
-                        binding.btnDescargarCv.isEnabled = true
-                        binding.btnVerCv.isEnabled = true
-
-                        binding.btnDescargarCv.setOnClickListener {
-                            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
-                                // API 28 o menor: podría requerir WRITE_EXTERNAL_STORAGE
-                                requestStoragePermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                            } else {
-                                iniciarDescargaCv(currentCvUrl!!)
-                            }
-                        }
-
-                        binding.btnVerCv.setOnClickListener {
-                            abrirCvEnVisor(currentCvUrl!!)
-                        }
-                    } else {
-                        binding.btnDescargarCv.isEnabled = false
-                        binding.btnVerCv.isEnabled = false
-                        Toast.makeText(requireContext(), "Este postulante no tiene CV cargado.", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                override fun onCancelled(error: DatabaseError) {
                     Toast.makeText(requireContext(), "Error: ${error.message}", Toast.LENGTH_SHORT).show()
                 }
             })
     }
 
+    private fun setBotonesAccionEnabled(enabled: Boolean) {
+        if (_binding == null) return
+        binding.btnAceptarEntrevista.isEnabled = enabled
+        binding.btnRechazarEntrevista.isEnabled = enabled
+    }
+
     private fun abrirCvEnVisor(url: String) {
         try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            // Sugerir MIME para que el chooser priorice visores PDF
-            intent.setDataAndType(Uri.parse(url), "application/pdf")
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(Uri.parse(url), "application/pdf")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
             startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(requireContext(), "No se pudo abrir el CV: ${e.message}", Toast.LENGTH_LONG).show()
+            if (_binding == null) return
+            Toast.makeText(requireContext(), "No se pudo abrir el CV", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun iniciarDescargaCv(url: String) {
         try {
             val fileName = sugerirNombreArchivo(url.toUri(), binding.tvNombre.text?.toString(), uid)
-
+            val request = DownloadManager.Request(Uri.parse(url)).apply {
+                setTitle(fileName)
+                setDescription("Descargando CV")
+                setMimeType("application/pdf")
+                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+            }
             val dm = requireContext().getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            val request = DownloadManager.Request(Uri.parse(url))
-                .setTitle(fileName)
-                .setDescription("Descargando CV…")
-                .setMimeType("application/pdf")
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-
-            @Suppress("DEPRECATION")
-            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-
             dm.enqueue(request)
-            Toast.makeText(requireContext(), "Descarga iniciada. Revisa notificaciones.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Descarga iniciada", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-            Toast.makeText(requireContext(), "No se pudo iniciar la descarga: ${e.message}", Toast.LENGTH_LONG).show()
+            if (_binding == null) return
+            Toast.makeText(requireContext(), "Error al iniciar descarga", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun sugerirNombreArchivo(uri: Uri, nombre: CharSequence?, uid: String?): String {
-        // Nombre base: "CV_<Nombre o UID>.pdf"
         val base = (nombre?.toString()?.ifBlank { null } ?: uid ?: "postulante")
             .replace("\\s+".toRegex(), "_")
             .replace("[^A-Za-z0-9_\\-]".toRegex(), "")
-        // Si el path del enlace trae algo tipo ".../cv_1695760000000.pdf?alt=media&token=..."
         val last = uri.lastPathSegment ?: ""
-        val posible = last.substringAfterLast('/').substringBefore('?')
-        val ext = if (posible.endsWith(".pdf", ignoreCase = true)) ".pdf" else ".pdf"
+        val ext = if (last.endsWith(".pdf", ignoreCase = true)) ".pdf" else ".pdf"
         return "CV_${base}$ext"
     }
 
     override fun onDestroyView() {
-        super.onDestroyView()
         _binding = null
+        super.onDestroyView()
     }
 }
-

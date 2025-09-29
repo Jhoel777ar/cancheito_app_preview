@@ -53,41 +53,34 @@ class VerPostulacionesFragment : Fragment(R.layout.fragment_ver_postulaciones) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentVerPostulacionesBinding.bind(view)
-
         offerId = arguments?.getString(ARG_OFFER_ID)
         if (offerId == null) {
             Toast.makeText(requireContext(), "Oferta no encontrada", Toast.LENGTH_SHORT).show()
             return
         }
-
         cargarPostulaciones()
     }
 
     private fun cargarPostulaciones() {
-        // Mantén la referencia para poder quitar el listener luego
         queryRef = db.child("postulaciones").orderByChild("offerId").equalTo(offerId)
         postulacionesListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                binding.llPostulaciones.removeAllViews()
-
+                _binding?.llPostulaciones?.removeAllViews()
                 if (!snapshot.exists()) {
                     val tvEmpty = TextView(requireContext()).apply {
                         text = "No hay postulantes para esta oferta"
                         textSize = 16f
-                        val p = dp(16)
-                        setPadding(p, p, p, p)
+                        setPadding(dp(16), dp(16), dp(16), dp(16))
                     }
-                    binding.llPostulaciones.addView(tvEmpty)
+                    _binding?.llPostulaciones?.addView(tvEmpty)
                     return
                 }
-
                 val postulaciones = snapshot.children
                     .mapNotNull { it.getValue(Postulacion::class.java) }
                     .sortedByDescending { it.fechaPostulacion }
-
                 postulaciones.forEach { p ->
                     val uid = p.postulanteId ?: return@forEach
-                    cargarUsuarioYAgregarItem(uid, p.fechaPostulacion)
+                    cargarUsuarioYAgregarItem(uid, p.fechaPostulacion, p.estado_postulacion)
                 }
             }
 
@@ -95,84 +88,87 @@ class VerPostulacionesFragment : Fragment(R.layout.fragment_ver_postulaciones) {
                 Toast.makeText(requireContext(), "Error: ${error.message}", Toast.LENGTH_SHORT).show()
             }
         }
-        queryRef!!.addValueEventListener(postulacionesListener as ValueEventListener)
+        queryRef?.addValueEventListener(postulacionesListener!!)
     }
 
-    private fun cargarUsuarioYAgregarItem(uid: String, fechaPostulacion: Long) {
+    private fun cargarUsuarioYAgregarItem(uid: String, fechaPostulacion: Long, estado: String?) {
         db.child(USERS_NODE).child(uid)
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snap: DataSnapshot) {
                     val user = snap.getValue(Usuarios::class.java)
-                    binding.llPostulaciones.addView(construirItemUsuario(uid, user, fechaPostulacion))
+                    _binding?.llPostulaciones?.addView(construirItemUsuario(uid, user, fechaPostulacion, estado))
                 }
                 override fun onCancelled(error: DatabaseError) {
-                    binding.llPostulaciones.addView(construirItemUsuario(uid, null, fechaPostulacion))
+                    _binding?.llPostulaciones?.addView(construirItemUsuario(uid, null, fechaPostulacion, estado))
                 }
             })
     }
 
-    private fun construirItemUsuario(uid: String, user: Usuarios?, fechaPostulacion: Long): View {
-        val pad = dp(16)
+    private fun construirItemUsuario(uid: String, user: Usuarios?, fechaPostulacion: Long, estado: String?): View {
         val cont = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad, pad, pad)
-            setBackgroundResource(android.R.drawable.dialog_holo_light_frame)
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(16), dp(16), dp(16), dp(16))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                val m = dp(8)
-                setMargins(m, m, m, m)
+                setMargins(dp(8), dp(8), dp(8), dp(8))
             }
         }
-
-        // Imagen de perfil
-        val sizePx = dp(120)
+        val contentLayout = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
         val imageView = ImageView(requireContext()).apply {
-            layoutParams = LinearLayout.LayoutParams(sizePx, sizePx).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(120), dp(120)).apply {
                 bottomMargin = dp(12)
                 gravity = Gravity.CENTER_HORIZONTAL
             }
             scaleType = ImageView.ScaleType.CENTER_CROP
         }
-
         Glide.with(this@VerPostulacionesFragment)
             .load(user?.fotoPerfilUrl)
             .placeholder(R.drawable.person_24px)
             .error(R.drawable.person_24px)
             .into(imageView)
-
-        cont.addView(imageView)
-
-        // Nombre
-        cont.addView(TextView(requireContext()).apply {
+        contentLayout.addView(imageView)
+        contentLayout.addView(TextView(requireContext()).apply {
             text = "Nombre: ${user?.nombre_completo ?: "(sin nombre)"}"
             textSize = 16f
         })
-
-        // Email
-        cont.addView(TextView(requireContext()).apply {
+        contentLayout.addView(TextView(requireContext()).apply {
             text = "Email: ${user?.email ?: "-"}"
             textSize = 14f
         })
-
-        // Fecha postulación
-        cont.addView(TextView(requireContext()).apply {
+        contentLayout.addView(TextView(requireContext()).apply {
             val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
             text = "Fecha: ${dateFormat.format(Date(fechaPostulacion))}"
             textSize = 14f
         })
-
-        // Click a detalle
+        cont.addView(contentLayout)
+        cont.addView(TextView(requireContext()).apply {
+            text = when (estado?.lowercase()) {
+                "aceptado" -> "Aceptado"
+                "rechazado" -> "Rechazado"
+                else -> "Pendiente"
+            }
+            textSize = 14f
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(dp(8), 0, dp(8), 0)
+            }
+        })
         if (uid.isNotEmpty()) {
             cont.setOnClickListener { abrirDetallePostulante(uid) }
         }
-
         return cont
     }
 
     private fun abrirDetallePostulante(uid: String) {
-        val currentOfferId = offerId ?: return // o muestra un Toast si quieres
+        val currentOfferId = offerId ?: return
         parentFragmentManager.beginTransaction()
             .replace(
                 R.id.navFragment,
@@ -186,7 +182,6 @@ class VerPostulacionesFragment : Fragment(R.layout.fragment_ver_postulaciones) {
         (value * resources.displayMetrics.density).toInt()
 
     override fun onDestroyView() {
-        // Quita el listener del MISMO Query donde lo agregaste
         postulacionesListener?.let { listener ->
             queryRef?.removeEventListener(listener)
         }
