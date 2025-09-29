@@ -16,11 +16,10 @@ class OffersUnifiedAdapter(
     private val onItemClick: (Offer) -> Unit = {}
 ) : ListAdapter<Offer, OffersUnifiedAdapter.VH>(DIFF) {
 
-    // --- NUEVO: set de ofertas ya aplicadas ---
     private var appliedOffers: Set<String> = emptySet()
     fun updateAppliedOffers(newSet: Set<String>) {
         appliedOffers = newSet
-        notifyDataSetChanged() // refresca estado del botón
+        notifyDataSetChanged()
     }
 
     object DIFF : DiffUtil.ItemCallback<Offer>() {
@@ -30,20 +29,19 @@ class OffersUnifiedAdapter(
 
     inner class VH(private val b: ItemOfertaBinding) : RecyclerView.ViewHolder(b.root) {
         fun bind(of: Offer) = with(b) {
-            tvCargo.text = of.cargo
-            tvDescripcion.text = of.descripcion
-            tvUbicacion.text = of.ubicacion
-            tvModalidad.text = of.modalidad
-            tvPago.text = of.pago_aprox
-            tvFechaLimite.text = of.fecha_limite?.let { ms ->
+            tvCargo.text = "Cargo: ${of.cargo}"
+            tvDescripcion.text = "Descripción: ${of.descripcion}"
+            tvUbicacion.text = "Ubicación: ${of.ubicacion}"
+            tvModalidad.text = "Modalidad: ${of.modalidad}"
+            tvPago.text = "Pago aprox: ${of.pago_aprox}"
+            tvFechaLimite.text = "Fecha límite: ${of.fecha_limite?.let { ms ->
                 SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply {
                     timeZone = TimeZone.getDefault()
                 }.format(ms)
-            } ?: "No especificada"
+            } ?: "No especificada"}"
 
             root.setOnClickListener { onItemClick(of) }
 
-            // --- NUEVO: estado del botón según appliedOffers ---
             val yaPostulado = appliedOffers.contains(of.id)
             btnPostular.isEnabled = !yaPostulado
             btnPostular.text = if (yaPostulado) "Ya postulaste" else "Postular"

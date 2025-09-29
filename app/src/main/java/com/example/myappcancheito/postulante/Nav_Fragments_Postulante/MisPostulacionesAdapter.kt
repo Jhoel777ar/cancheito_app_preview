@@ -9,6 +9,8 @@ import java.util.*
 
 data class PostulacionUI(
     val cargo: String,
+    val ubicacion: String,
+    val empleadorNombre: String,
     val estado: String,
     val fechaPostulacion: Long? = null
 )
@@ -35,13 +37,17 @@ class MisPostulacionesAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val it = items[position]
-        holder.b.tvCargo.text = it.cargo
-        holder.b.tvEstado.text = "Estado: ${it.estado}"
-
-        val f = it.fechaPostulacion
-        holder.b.tvFecha.text = if (f != null && f > 0) {
-            val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-            "Postulado: ${sdf.format(Date(f))}"
-        } else ""
+        with(holder.b) {
+            tvCargo.text = "Cargo: ${it.cargo}"
+            tvUbicacion.text = "Ubicación: ${it.ubicacion}"
+            tvEmpleador.text = "Empleador: ${it.empleadorNombre}"
+            tvEstado.text = "Estado: ${it.estado}"
+            tvFecha.text = it.fechaPostulacion?.let { f ->
+                if (f > 0) {
+                    val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                    "Postulado: ${sdf.format(Date(f))}"
+                } else ""
+            } ?: ""
+        }
     }
 }

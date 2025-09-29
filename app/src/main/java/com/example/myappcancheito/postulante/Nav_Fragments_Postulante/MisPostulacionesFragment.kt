@@ -2,6 +2,7 @@ package com.example.myappcancheito.postulante.Nav_Fragments_Postulante
 
 import android.os.Bundle
 import android.view.View
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.myappcancheito.R
@@ -20,6 +21,8 @@ class MisPostulacionesFragment : Fragment(R.layout.fragment_mis_postulaciones) {
     private val auth by lazy { FirebaseAuth.getInstance() }
 
     private lateinit var adapter: MisPostulacionesAdapter
+    private var postulacionesListener: ValueEventListener? = null
+    private var postulacionesQuery: Query? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -40,12 +43,13 @@ class MisPostulacionesFragment : Fragment(R.layout.fragment_mis_postulaciones) {
 
         mostrarCargando(true)
 
-        // 1) Traer postulaciones del usuario
-        val postRef = db.child("postulaciones")
-        val q = postRef.orderByChild("postulanteId").equalTo(uid)
+        postulacionesQuery?.removeEventListener(postulacionesListener ?: return)
 
-        q.addListenerForSingleValueEvent(object : ValueEventListener {
+        postulacionesQuery = db.child("postulaciones").orderByChild("postulanteId").equalTo(uid)
+        postulacionesListener = object : ValueEventListener {
             override fun onDataChange(snap: DataSnapshot) {
+                if (!isAdded) return
+
                 val postulaciones = snap.children.mapNotNull { it.getValue(Postulacion::class.java) }
 
                 if (postulaciones.isEmpty()) {
@@ -54,31 +58,55 @@ class MisPostulacionesFragment : Fragment(R.layout.fragment_mis_postulaciones) {
                     return
                 }
 
-                // 2) Recolectar offerIds
                 val offerIds = postulaciones.mapNotNull { it.offerId }.toSet()
+
                 db.child("ofertas").addListenerForSingleValueEvent(object : ValueEventListener {
                     override fun onDataChange(offSnap: DataSnapshot) {
-                        // 3) Armar mapa offerId -> Offer
+                        if (!isAdded) return
+
                         val offersMap = mutableMapOf<String, Offer>()
                         for (id in offerIds) {
                             offSnap.child(id).getValue(Offer::class.java)?.let { offersMap[id] = it }
                         }
 
-                        // 4) Construir UI list (cargo + estado)
-                        val ui = postulaciones.map { p ->
-                            val cargo = offersMap[p.offerId]?.cargo ?: "(Oferta no encontrada)"
-                            PostulacionUI(
-                                cargo = cargo,
-                                estado = p.estado_postulacion.ifBlank { "pendiente" },
-                                fechaPostulacion = p.fechaPostulacion
-                            )
-                        }
+                        val employerIds = offersMap.values.mapNotNull { it.employerId }.toSet()
+                        db.child("Usuarios").addListenerForSingleValueEvent(object : ValueEventListener {
+                            override fun onDataChange(userSnap: DataSnapshot) {
+                                if (!isAdded) return
 
-                        adapter.submit(ui)
-                        mostrarEstado(empty = ui.isEmpty())
+                                val employersMap = mutableMapOf<String, String>()
+                                for (id in employerIds) {
+                                    val user = userSnap.child(id)
+                                    val name = user.child("nombre_completo").getValue(String::class.java)
+                                    val email = user.child("email").getValue(String::class.java)
+                                    employersMap[id] = name ?: email ?: "Empleador desconocido"
+                                }
+
+                                val ui = postulaciones.map { p ->
+                                    val offer = offersMap[p.offerId]
+                                    PostulacionUI(
+                                        cargo = offer?.cargo ?: "(Oferta no encontrada)",
+                                        ubicacion = offer?.ubicacion ?: "No especificada",
+                                        empleadorNombre = offer?.employerId?.let { employersMap[it] } ?: "Empleador desconocido",
+                                        estado = p.estado_postulacion.ifBlank { "pendiente" },
+                                        fechaPostulacion = p.fechaPostulacion
+                                    )
+                                }
+
+                                adapter.submit(ui)
+                                mostrarEstado(empty = ui.isEmpty())
+                            }
+
+                            override fun onCancelled(error: DatabaseError) {
+                                if (!isAdded) return
+                                adapter.submit(emptyList())
+                                mostrarEstado(empty = true)
+                            }
+                        })
                     }
 
                     override fun onCancelled(error: DatabaseError) {
+                        if (!isAdded) return
                         adapter.submit(emptyList())
                         mostrarEstado(empty = true)
                     }
@@ -86,24 +114,28 @@ class MisPostulacionesFragment : Fragment(R.layout.fragment_mis_postulaciones) {
             }
 
             override fun onCancelled(error: DatabaseError) {
+                if (!isAdded) return
                 adapter.submit(emptyList())
                 mostrarEstado(empty = true)
             }
-        })
+        }
+
+        postulacionesQuery?.addValueEventListener(postulacionesListener ?: return)
     }
 
     private fun mostrarCargando(show: Boolean) {
-        binding.progress.visibility = if (show) View.VISIBLE else View.GONE
+        binding.progress.isVisible = show
     }
 
     private fun mostrarEstado(empty: Boolean) {
         mostrarCargando(false)
-        binding.tvEmpty.visibility = if (empty) View.VISIBLE else View.GONE
-        binding.rvPostulaciones.visibility = if (empty) View.GONE else View.VISIBLE
+        binding.tvEmpty.isVisible = empty
+        binding.rvPostulaciones.isVisible = !empty
     }
 
     override fun onDestroyView() {
-        super.onDestroyView()
+        postulacionesQuery?.removeEventListener(postulacionesListener ?: return)
         _binding = null
+        super.onDestroyView()
     }
 }

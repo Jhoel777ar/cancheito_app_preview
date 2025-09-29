@@ -1,20 +1,23 @@
 package com.example.myappcancheito.postulante.ui
 
 import androidx.lifecycle.*
-import com.example.myappcancheito.empleador.ofertas.OffersRepository
 import com.example.myappcancheito.empleador.ofertas.Offer
+import com.google.firebase.database.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
-// ➜ Incluye query
 data class OffersFilter(
     val cargo: String? = null,
     val ciudad: String? = null,
     val query: String? = null
 )
 
-class OffersViewModel(
-    private val repo: OffersRepository = OffersRepository()
-) : ViewModel() {
+class OffersViewModel : ViewModel() {
+
+    private val allOffers = mutableListOf<Offer>()
+    private var currentFilter = OffersFilter()
 
     private val _items = MutableLiveData<List<Offer>>(emptyList())
     val items: LiveData<List<Offer>> = _items
@@ -22,27 +25,109 @@ class OffersViewModel(
     private val _empty = MutableLiveData(false)
     val empty: LiveData<Boolean> = _empty
 
+    private val _cargos = MutableLiveData<List<String>>(listOf("Todos"))
+    val cargos: LiveData<List<String>> = _cargos
+
+    private val _ciudades = MutableLiveData<List<String>>(listOf("Todas"))
+    val ciudades: LiveData<List<String>> = _ciudades
+
+    private val _filtrosListos = MutableLiveData(false)
+    val filtrosListos: LiveData<Boolean> = _filtrosListos
+
+    private val _error = MutableLiveData<String?>()
+    val error: LiveData<String?> = _error
+
+    private val _newOffer = MutableLiveData<Offer?>()
+    val newOffer: LiveData<Offer?> = _newOffer
+
+    private var offersListener: ChildEventListener? = null
+    private var dbRef: DatabaseReference? = null
+
+    fun loadAndListenOffers(db: DatabaseReference) {
+        dbRef = db
+        viewModelScope.launch {
+            try {
+                val snap = withContext(Dispatchers.IO) { db.child("ofertas").get().await() }
+                val offers = snap.children.mapNotNull { it.getValue(Offer::class.java) }.filter { it.estado == "ACTIVA" }
+                setAllOffers(offers)
+                updateFiltros(offers)
+                _filtrosListos.value = true
+                loadInitial()
+            } catch (e: Exception) {
+                _error.value = "Error cargando filtros: ${e.message}"
+                _filtrosListos.value = false
+                loadInitial()
+            }
+        }
+
+        offersListener = object : ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                val offer = snapshot.getValue(Offer::class.java) ?: return
+                if (offer.estado == "ACTIVA") {
+                    addOffer(offer)
+                    _newOffer.value = offer
+                    _newOffer.value = null // Reset
+                }
+            }
+
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
+                val offer = snapshot.getValue(Offer::class.java) ?: return
+                if (offer.estado == "ACTIVA") updateOffer(offer) else removeOffer(offer.id)
+            }
+
+            override fun onChildRemoved(snapshot: DataSnapshot) {
+                val offer = snapshot.getValue(Offer::class.java) ?: return
+                removeOffer(offer.id)
+            }
+
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        db.child("ofertas").addChildEventListener(offersListener!!)
+    }
+
+    private fun updateFiltros(offers: List<Offer>) {
+        val cargosUnicos = offers.mapNotNull { it.cargo?.trim()?.takeIf { it.isNotEmpty() } }.toSet().sorted()
+        val ciudadesUnicas = offers.mapNotNull { it.ubicacion?.trim()?.takeIf { it.isNotEmpty() } }.toSet().sorted()
+        _cargos.value = listOf("Todos") + cargosUnicos
+        _ciudades.value = listOf("Todas") + ciudadesUnicas
+    }
+
+    fun setAllOffers(list: List<Offer>) {
+        allOffers.clear()
+        allOffers.addAll(list)
+        applyFilters(currentFilter)
+    }
+
+    fun addOffer(offer: Offer) {
+        if (allOffers.none { it.id == offer.id }) {
+            allOffers.add(offer)
+            updateFiltros(allOffers)
+        }
+        applyFilters(currentFilter)
+    }
+
+    fun updateOffer(offer: Offer) {
+        val index = allOffers.indexOfFirst { it.id == offer.id }
+        if (index != -1) {
+            allOffers[index] = offer
+            updateFiltros(allOffers)
+        }
+        applyFilters(currentFilter)
+    }
+
+    fun removeOffer(id: String) {
+        allOffers.removeIf { it.id == id }
+        updateFiltros(allOffers)
+        applyFilters(currentFilter)
+    }
+
     fun loadInitial() = applyFilters(OffersFilter())
 
     fun applyFilters(filter: OffersFilter) {
+        currentFilter = filter
         viewModelScope.launch {
-            // 1) Trae base según cargo/ciudad
-            val base: List<Offer> = when {
-                filter.cargo.isNullOrBlank() && filter.ciudad.isNullOrBlank() ->
-                    repo.getRecent()
-                !filter.cargo.isNullOrBlank() && !filter.ciudad.isNullOrBlank() ->
-                    repo.getByCargoAndUbicacion(filter.cargo!!, filter.ciudad!!)
-                !filter.cargo.isNullOrBlank() ->
-                    repo.getByCargo(filter.cargo!!)
-                !filter.ciudad.isNullOrBlank() ->
-                    repo.getByUbicacion(filter.ciudad!!)
-                else ->
-                    repo.getRecent()
-            }
-
-            // 2) Aplica búsqueda local por texto (query) + seguridad por si luego amplías filtros
-            val filtered = base.filter { matchesFilter(it, filter) }
-
+            val filtered = allOffers.filter { matchesFilter(it, filter) }
             _items.value = filtered
             _empty.value = filtered.isEmpty()
         }
@@ -64,5 +149,10 @@ class OffersViewModel(
             q.lowercase() in haystack
         } ?: true
         return okCargo && okCiudad && okQuery
+    }
+
+    override fun onCleared() {
+        offersListener?.let { dbRef?.child("ofertas")?.removeEventListener(it) }
+        super.onCleared()
     }
 }
