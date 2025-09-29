@@ -7,7 +7,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
-import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -17,8 +16,8 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
-import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.myappcancheito.R
 import com.example.myappcancheito.databinding.FragmentInicioPBinding
@@ -28,17 +27,8 @@ import com.example.myappcancheito.postulante.ui.OffersFilter
 import com.example.myappcancheito.postulante.ui.OffersUnifiedAdapter
 import com.example.myappcancheito.postulante.ui.OffersViewModel
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.Query
-import com.google.firebase.database.ValueEventListener
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
+import com.google.firebase.database.*
 import java.util.Calendar
-import kotlin.getValue
 import kotlin.random.Random
 
 class FragmentInicioV : Fragment(R.layout.fragment_inicio_v) {
@@ -60,6 +50,8 @@ class FragmentInicioV : Fragment(R.layout.fragment_inicio_v) {
 
     private var postQuery: Query? = null
     private var postListener: ValueEventListener? = null
+    private var offersQuery: Query? = null
+    private var offersListener: ValueEventListener? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -82,8 +74,12 @@ class FragmentInicioV : Fragment(R.layout.fragment_inicio_v) {
         b.spCargo.adapter = cargoAdapter
         b.spCiudad.adapter = ciudadAdapter
 
-        vm.items.observe(viewLifecycleOwner) { list -> adapter.submitList(list) }
-        vm.empty.observe(viewLifecycleOwner) { isEmpty -> b.tvEmpty.isVisible = isEmpty }
+        vm.items.observe(viewLifecycleOwner) { list ->
+            val uid = auth.currentUser?.uid
+            val filteredList = list.filter { it.employerId != uid }
+            adapter.submitList(filteredList)
+            b.tvEmpty.isVisible = filteredList.isEmpty()
+        }
         vm.cargos.observe(viewLifecycleOwner) {
             cargos.clear()
             cargos.addAll(it)
@@ -104,12 +100,14 @@ class FragmentInicioV : Fragment(R.layout.fragment_inicio_v) {
             }
         }
         vm.newOffer.observe(viewLifecycleOwner) { offer ->
-            if (offer != null) showNotification(offer)
+            if (offer != null && offer.employerId != auth.currentUser?.uid) {
+                showNotification(offer)
+            }
         }
 
         if (isNetworkAvailable()) {
             b.groupError.isVisible = false
-            vm.loadAndListenOffers(db)
+            cargarOfertasYPostulaciones()
         } else {
             b.groupError.isVisible = true
             b.tvError.text = "No hay conexión a internet"
@@ -134,6 +132,7 @@ class FragmentInicioV : Fragment(R.layout.fragment_inicio_v) {
 
     override fun onDestroyView() {
         postListener?.let { l -> postQuery?.removeEventListener(l) }
+        offersListener?.let { l -> offersQuery?.removeEventListener(l) }
         _b = null
         super.onDestroyView()
     }
@@ -159,6 +158,39 @@ class FragmentInicioV : Fragment(R.layout.fragment_inicio_v) {
 
     private fun aplicarFiltros() {
         vm.applyFilters(filtroActual())
+    }
+
+    private fun cargarOfertasYPostulaciones() {
+        val uid = auth.currentUser?.uid ?: return
+        offersQuery?.let { q -> offersListener?.let { q.removeEventListener(it) } }
+
+        offersQuery = db.child("ofertas")
+        offersListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (!isAdded) return
+                val offers = snapshot.children
+                    .mapNotNull { it.getValue(Offer::class.java) }
+                    .filter { it.employerId != uid }
+                adapter.submitList(offers)
+                b.tvEmpty.isVisible = offers.isEmpty()
+                val cargosUnicos = offers.mapNotNull { it.cargo?.trim()?.takeIf { it.isNotEmpty() } }
+                    .toSet().toList().sorted()
+                val ciudadesUnicas = offers.mapNotNull { it.ubicacion?.trim()?.takeIf { it.isNotEmpty() } }
+                    .toSet().toList().sorted()
+                cargos.apply { clear(); add("Todos"); addAll(cargosUnicos) }
+                ciudades.apply { clear(); add("Todas"); addAll(ciudadesUnicas) }
+                cargoAdapter.notifyDataSetChanged()
+                ciudadAdapter.notifyDataSetChanged()
+                filtrosListos = true
+            }
+            override fun onCancelled(error: DatabaseError) {
+                if (isAdded) {
+                    Toast.makeText(requireContext(), "Error al cargar ofertas: ${error.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        offersQuery!!.addValueEventListener(offersListener as ValueEventListener)
+        vm.loadAndListenOffers(db)
     }
 
     private fun intentarPostular(oferta: Offer) {
