@@ -1,8 +1,11 @@
 package com.example.myappcancheito.empleador.Nav_fragment_Empleador
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.os.Bundle
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
@@ -11,6 +14,7 @@ import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
+import androidx.core.app.NotificationCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
 import androidx.fragment.app.viewModels
@@ -33,30 +37,27 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.util.Calendar
 import kotlin.getValue
+import kotlin.random.Random
 
-class FragmentInicioV : Fragment(R.layout.fragment_inicio_p) {
+class FragmentInicioV : Fragment(R.layout.fragment_inicio_v) {
 
-    // ViewBinding
     private var _b: FragmentInicioPBinding? = null
     private val b get() = _b!!
 
-    // Firebase + VM
     private val auth by lazy { FirebaseAuth.getInstance() }
     private val db by lazy { FirebaseDatabase.getInstance().reference }
     private val vm: OffersViewModel by viewModels()
 
-    // Spinners
     private lateinit var cargoAdapter: ArrayAdapter<String>
     private lateinit var ciudadAdapter: ArrayAdapter<String>
-    private val cargos = mutableListOf("Todos")
-    private val ciudades = mutableListOf("Todas")
+    private val cargos = mutableListOf<String>()
+    private val ciudades = mutableListOf<String>()
     private var filtrosListos = false
 
-    // Recycler
     private lateinit var adapter: OffersUnifiedAdapter
 
-    // Listener de postulaciones (para “Ya postulaste”)
     private var postQuery: Query? = null
     private var postListener: ValueEventListener? = null
 
@@ -70,34 +71,50 @@ class FragmentInicioV : Fragment(R.layout.fragment_inicio_p) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Adapter (ListAdapter + DiffUtil)
         adapter = OffersUnifiedAdapter(
-            onPostularClick = { offer -> intentarPostular(offer) },
-            onItemClick = { /* opcional: abrir detalle */ }
+            onPostularClick = { offer -> intentarPostular(offer) }
         )
-        b.rvOffers.layoutManager = LinearLayoutManager(requireContext())
+        b.rvOffers.layoutManager = LinearLayoutManager(context)
         b.rvOffers.adapter = adapter
 
-        // Spinners
         cargoAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, cargos)
         ciudadAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, ciudades)
         b.spCargo.adapter = cargoAdapter
         b.spCiudad.adapter = ciudadAdapter
 
-        // Observers del ViewModel
         vm.items.observe(viewLifecycleOwner) { list -> adapter.submitList(list) }
         vm.empty.observe(viewLifecycleOwner) { isEmpty -> b.tvEmpty.isVisible = isEmpty }
+        vm.cargos.observe(viewLifecycleOwner) {
+            cargos.clear()
+            cargos.addAll(it)
+            cargoAdapter.notifyDataSetChanged()
+        }
+        vm.ciudades.observe(viewLifecycleOwner) {
+            ciudades.clear()
+            ciudades.addAll(it)
+            ciudadAdapter.notifyDataSetChanged()
+        }
+        vm.filtrosListos.observe(viewLifecycleOwner) { ready ->
+            filtrosListos = ready
+            if (ready) aplicarFiltros()
+        }
+        vm.error.observe(viewLifecycleOwner) { msg ->
+            if (msg != null && isAdded) {
+                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+            }
+        }
+        vm.newOffer.observe(viewLifecycleOwner) { offer ->
+            if (offer != null) showNotification(offer)
+        }
 
-        // Carga inicial
         if (isNetworkAvailable()) {
             b.groupError.isVisible = false
-            cargarFiltrosDesdeFirebase()
+            vm.loadAndListenOffers(db)
         } else {
             b.groupError.isVisible = true
             b.tvError.text = "No hay conexión a internet"
         }
 
-        // Listeners de filtros/búsqueda
         val aplicar: () -> Unit = {
             if (filtrosListos) vm.applyFilters(filtroActual())
         }
@@ -112,18 +129,14 @@ class FragmentInicioV : Fragment(R.layout.fragment_inicio_p) {
             if (filtrosListos) vm.clearFilters()
         }
 
-        // Escucha las postulaciones del usuario para actualizar botones
         cargarPostulacionesDelUsuario()
     }
 
     override fun onDestroyView() {
-        // Limpia listener de postulaciones
         postListener?.let { l -> postQuery?.removeEventListener(l) }
         _b = null
         super.onDestroyView()
     }
-
-    // ----------------- Helpers -----------------
 
     private fun isNetworkAvailable(): Boolean {
         val cm = requireContext().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -132,39 +145,11 @@ class FragmentInicioV : Fragment(R.layout.fragment_inicio_p) {
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    /** Lee /ofertas para poblar los spinners y luego pide recientes al VM. */
-    private fun cargarFiltrosDesdeFirebase() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                val snap = withContext(Dispatchers.IO) { db.child("ofertas").get().await() }
-                val offers = snap.children.mapNotNull { it.getValue(Offer::class.java) }
-
-                val cargosUnicos = offers.mapNotNull { it.cargo?.trim()?.takeIf { it.isNotEmpty() } }
-                    .toSet().toList().sorted()
-                val ciudadesUnicas = offers.mapNotNull { it.ubicacion?.trim()?.takeIf { it.isNotEmpty() } }
-                    .toSet().toList().sorted()
-
-                cargos.apply { clear(); add("Todos"); addAll(cargosUnicos) }
-                ciudades.apply { clear(); add("Todas"); addAll(ciudadesUnicas) }
-                cargoAdapter.notifyDataSetChanged()
-                ciudadAdapter.notifyDataSetChanged()
-
-                filtrosListos = true
-                vm.loadInitial()
-            } catch (e: Exception) {
-                filtrosListos = false
-                Toast.makeText(requireContext(), "Error cargando filtros: ${e.message}", Toast.LENGTH_SHORT).show()
-                vm.loadInitial()
-            }
-        }
-    }
-
     private fun simpleListener(block: () -> Unit) = object : AdapterView.OnItemSelectedListener {
         override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = block()
         override fun onNothingSelected(parent: AdapterView<*>?) {}
     }
 
-    /** Construye el filtro actual (cargo, ciudad, query de la lupita). */
     private fun filtroActual(): OffersFilter {
         val cargoSel = b.spCargo.selectedItem?.toString()?.takeIf { it != "Todos" }
         val ciudadSel = b.spCiudad.selectedItem?.toString()?.takeIf { it != "Todas" }
@@ -172,7 +157,9 @@ class FragmentInicioV : Fragment(R.layout.fragment_inicio_p) {
         return OffersFilter(cargo = cargoSel, ciudad = ciudadSel, query = q)
     }
 
-    // --------------- Postular ---------------
+    private fun aplicarFiltros() {
+        vm.applyFilters(filtroActual())
+    }
 
     private fun intentarPostular(oferta: Offer) {
         val uid = auth.currentUser?.uid ?: run {
@@ -217,14 +204,11 @@ class FragmentInicioV : Fragment(R.layout.fragment_inicio_p) {
             offerId = oferta.id,
             postulanteId = uid,
             offerId_postulanteId = key,
-            // si tu data class tiene 'estado', puedes guardar:
-            // estado = "pendiente",
             fechaPostulacion = System.currentTimeMillis()
         )
         db.child("postulaciones").child(key).setValue(p)
             .addOnSuccessListener {
                 Toast.makeText(requireContext(), "Postulación enviada con éxito", Toast.LENGTH_SHORT).show()
-                // Refresca inmediatamente el estado del botón
                 cargarPostulacionesDelUsuario()
             }
             .addOnFailureListener {
@@ -232,22 +216,44 @@ class FragmentInicioV : Fragment(R.layout.fragment_inicio_p) {
             }
     }
 
-    // --------------- Applied offers -> deshabilitar botón ---------------
-
     private fun cargarPostulacionesDelUsuario() {
         val uid = auth.currentUser?.uid ?: return
-        postQuery?.let { q -> postListener?.let { q.removeEventListener(it) } } // por si se re-llama
+        postQuery?.let { q -> postListener?.let { q.removeEventListener(it) } }
 
         postQuery = db.child("postulaciones").orderByChild("postulanteId").equalTo(uid)
         postListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
+                if (!isAdded) return
                 val applied: Set<String> = snapshot.children.mapNotNull {
                     it.getValue(Postulacion::class.java)?.offerId
                 }.toSet()
-                adapter.updateAppliedOffers(applied) // ← esto cambia el texto del botón
+                adapter.updateAppliedOffers(applied)
             }
-            override fun onCancelled(error: DatabaseError) { /* opcional: log */ }
+            override fun onCancelled(error: DatabaseError) {}
         }
         postQuery!!.addValueEventListener(postListener as ValueEventListener)
+    }
+
+    private fun showNotification(offer: Offer) {
+        val today = Calendar.getInstance()
+        val offerDate = Calendar.getInstance().apply { timeInMillis = offer.createdAt ?: return }
+        if (today.get(Calendar.YEAR) != offerDate.get(Calendar.YEAR) ||
+            today.get(Calendar.DAY_OF_YEAR) != offerDate.get(Calendar.DAY_OF_YEAR)) {
+            return
+        }
+        val context = requireContext()
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "new_offer_channel"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "New Offers", NotificationManager.IMPORTANCE_DEFAULT)
+            nm.createNotificationChannel(channel)
+        }
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.baseline_domain_verification_24)
+            .setContentTitle("Nueva Oferta Disponible")
+            .setContentText("Cargo: ${offer.cargo} en ${offer.ubicacion}")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        nm.notify(Random.nextInt(), notification)
     }
 }
